@@ -90,7 +90,7 @@ class ViewController: UIViewController {
     var list = ["Business", "Home", "Car"]
     var images = ["car.circle.fill", "mic.circle"]
     var selectedImages = [UIImage]()
-    var audioFilePaths:[String] = []
+    var audioFilePaths:[URL] = []
     var audioFileName = ""
 
     override func viewDidLoad() {
@@ -367,9 +367,10 @@ extension ViewController: UIDocumentPickerDelegate {
             return
         }
         // TODO: -
-        let filePath = String(asset.url.path)
-        audioFilePaths.append(filePath)
-        print(filePath, "documentPicker")
+        audioFilePaths.append(asset.url)
+        print(asset.url, "documentPicker")
+        print(asset.url.path,"asset.url.path")
+        // TODO: -
         self.playSound(asset.url)
     }
 }
@@ -426,7 +427,7 @@ extension ViewController: AVAudioRecorderDelegate {
                     ac.addAction(UIAlertAction(title: "OK", style: .default))
                     present(ac, animated: true)
         } else {
-            audioFilePaths.append(getRecordingURL(audioFileName).path)
+            audioFilePaths.append(getRecordingURL(audioFileName))
             UIView.animateKeyframes(withDuration: 2, delay: 0, options: [], animations: {
                 
                 UIView.addKeyframe(withRelativeStartTime: 0, relativeDuration: 1){
@@ -437,6 +438,9 @@ extension ViewController: AVAudioRecorderDelegate {
                 }
             }, completion: nil)
             print("finishRecording")
+            for path in audioFilePaths {
+                print(path)
+            }
         }
     }
 }

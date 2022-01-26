@@ -6,8 +6,15 @@
 //
 
 import UIKit
+import AVFoundation
+import UniformTypeIdentifiers
+import MobileCoreServices
 
 class ViewController: UIViewController {
+    
+    var recordingSession: AVAudioSession!
+    var recorder: AVAudioRecorder!
+    var player =  AVAudioPlayer ()
         
     private let taskTextField: UITextField = {
         let textField = UITextField(frame: .zero)
@@ -72,13 +79,19 @@ class ViewController: UIViewController {
     }()
     
     private let importPhotoButton = ImportButton(image: "photo.circle.fill")
-    private let importAudioButton = ImportButton(image: "mic.circle")
     private let takePhotoButton = ImportButton(image: "camera.circle")
+    private let recordAudioButton = ImportButton(image: "mic.circle")
+    private let importAudioFileButton = ImportButton(image: "speaker.circle")
+    
     
     private var editingMode: Bool = false
+    
+    
     var list = ["Business", "Home", "Car"]
     var images = ["car.circle.fill", "mic.circle"]
     var selectedImages = [UIImage]()
+    var audioFilePaths:[URL] = []
+    var audioFileName = ""
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -93,6 +106,8 @@ class ViewController: UIViewController {
         configureCollectionView()
         configureTableView()
         configureStackView()
+        
+        recordingSession = AVAudioSession.sharedInstance()
     }
     
     @objc private func importPhotoFromLibrary() {
@@ -103,9 +118,34 @@ class ViewController: UIViewController {
         present(imagePicker, animated: true, completion: nil)
     }
     
-    @objc private func importAudioFromLibrary() {
-        
+    @objc private func recordingVoice() {
+        if recorder == nil {
+            self.initialseRecording()
+            print("initialse")
+        } else {
+            self.finishRecording(success: true)
+        }
     }
+    
+    @objc private func importAudioFile() {
+        self.importAudFile()
+    }
+    
+    
+    // TODO: update into table view cell
+    /*
+     let name = audioFileNames[0]
+     let URL = getRecordingURL(name)
+     */
+    private func playSound (_ URL: URL) {
+        do {
+            try player = AVAudioPlayer.init(contentsOf: URL)
+        }catch {
+            print ("Error in play the sound file")
+        }
+        player.play()
+    }
+    
         
     private func configureTaskTextField() {
         view.addSubview(taskTextField)
@@ -183,14 +223,27 @@ class ViewController: UIViewController {
         
         stackView.addArrangedSubview(takePhotoButton)
         stackView.addArrangedSubview(importPhotoButton)
-        stackView.addArrangedSubview(importAudioButton)
+        stackView.addArrangedSubview(recordAudioButton)
+        stackView.addArrangedSubview(importAudioFileButton)
     }
     
     private func configureButtons() {
         importPhotoButton.addTarget(self, action: #selector(importPhotoFromLibrary), for: .touchUpInside)
         
-        importAudioButton.addTarget(self, action: #selector(importAudioFromLibrary), for: .touchUpInside)
+        recordAudioButton.addTarget(self, action: #selector(recordingVoice), for: .touchUpInside)
         
+        importAudioFileButton.addTarget(self, action: #selector(importAudioFile), for: .touchUpInside)
+        
+    }
+    
+    func getDocumentsDirectory() -> URL {
+        let paths = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)
+        let documentsDirectory = paths[0]
+        return documentsDirectory
+    }
+    
+    func getRecordingURL(_ fileName : String) -> URL {
+        return getDocumentsDirectory().appendingPathComponent(fileName)
     }
     
 
@@ -216,6 +269,7 @@ extension ViewController: UIPickerViewDelegate, UIPickerViewDataSource {
     }
     
 }
+
 
 extension ViewController: UICollectionViewDelegateFlowLayout, UICollectionViewDataSource {
     
@@ -294,6 +348,104 @@ extension ViewController: UIImagePickerControllerDelegate, UINavigationControlle
     }
     
 }
+
+extension ViewController: UIDocumentPickerDelegate {
+    
+    private func importAudFile() {
+        let supportedTypes: [UTType] = [UTType.audio]
+        let documentPicker = UIDocumentPickerViewController(forOpeningContentTypes: supportedTypes)
+        documentPicker.delegate = self
+        self.present(documentPicker, animated: true, completion: nil)
+    }
+    
+    func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+        guard let url = urls.first else {return}
+        let asset = AVURLAsset(url: url)
+        guard asset.isComposable else {
+            let alert = UIAlertController(title: "Error", message: "Your music is Not Composibble", preferredStyle: .alert)
+            present(alert, animated: true, completion: nil)
+            return
+        }
+        // TODO: -
+        audioFilePaths.append(asset.url)
+        print(asset.url, "documentPicker")
+        print(asset.url.path,"asset.url.path")
+        // TODO: -
+        self.playSound(asset.url)
+    }
+}
+
+extension ViewController: AVAudioRecorderDelegate {
+    private func startRec() {
+        audioFileName = "recording" + UUID().uuidString + ".m4a"
+        let audioURL = getRecordingURL(audioFileName)
+        let settings = [
+            AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
+            AVSampleRateKey: 12000,
+            AVNumberOfChannelsKey: 1,
+            AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue
+        ]
+        do {
+            recorder = try AVAudioRecorder(url: audioURL, settings: settings)
+            recorder.delegate = self
+            recorder.record()
+            recordAudioButton.tintColor = .red
+            print("start recording")
+        } catch {
+            print("Error in recording \(error.localizedDescription)")
+        }
+    }
+    
+    private func loadFailUI() {
+        let alert = UIAlertController(title: "Error", message: "No permission for using mic", preferredStyle: .alert)
+        present(alert, animated: true, completion: nil)
+    }
+    
+    private func initialseRecording() {
+        do {
+            try recordingSession.setCategory(.playAndRecord, mode: .default)
+            try recordingSession.setActive(true)
+            recordingSession.requestRecordPermission() { [unowned self] allowed in
+                DispatchQueue.main.async {
+                    if allowed {
+                        self.startRec()
+                    } else {
+                        self.loadFailUI()
+                    }
+                }
+            }
+        } catch {
+            self.loadFailUI()
+        }
+    }
+    
+    private func finishRecording(success: Bool) {
+            recorder?.stop()
+            recorder = nil
+        if !success {
+            let ac = UIAlertController(title: "Record failed", message: "There was a problem recording; please try again.", preferredStyle: .alert)
+                    ac.addAction(UIAlertAction(title: "OK", style: .default))
+                    present(ac, animated: true)
+        } else {
+            audioFilePaths.append(getRecordingURL(audioFileName))
+            UIView.animateKeyframes(withDuration: 2, delay: 0, options: [], animations: {
+                
+                UIView.addKeyframe(withRelativeStartTime: 0, relativeDuration: 1){
+                    self.recordAudioButton.tintColor = .green
+                }
+                UIView.addKeyframe(withRelativeStartTime: 1, relativeDuration: 1){
+                    self.recordAudioButton.tintColor = .lightCharcoal
+                }
+            }, completion: nil)
+            print("finishRecording")
+            for path in audioFilePaths {
+                print(path)
+            }
+        }
+    }
+}
+
+
 
 extension UIColor {
     static let crystalWhite = UIColor(red: 233/255, green: 236/255, blue: 244/255, alpha: 1)
